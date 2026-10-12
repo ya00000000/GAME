@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>鍵盤大冒險：字靈大衝刺 (Prototype)</title>
+  <style>
+    body {
+      background-color: #1a1a2e;
+      color: #ffffff;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 { margin-bottom: 10px; color: #4e54c8; text-shadow: 0 0 10px #8f94fb; }
+    #game-container {
+      position: relative;
+      width: 800px;
+      height: 400px;
+      border: 4px solid #4e54c8;
+      border-radius: 12px;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+      overflow: hidden;
+      background: #0f172a;
+    }
+    canvas { display: block; }
+    #ui-bar {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      right: 15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(15, 23, 42, 0.8);
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 18px;
+      font-weight: bold;
+      border: 1px solid #334155;
+    }
+    .highlight { color: #f59e0b; font-size: 24px; }
+    #hint-box {
+      margin-top: 15px;
+      width: 760px;
+      background: #1e293b;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 18px;
+      text-align: center;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
+  </style>
+</head>
+<body>
+
+  <h1>《鍵盤大冒險：字靈大衝刺》 Prototype</h1>
+
+  <div id="game-container">
+    <div id="ui-bar">
+      <div>得分: <span id="score-text" class="highlight">0</span></div>
+      <div>Combo: <span id="combo-text" class="highlight">0</span> 🔥</div>
+      <div>下一個字母: <span id="target-text" class="highlight">A</span></div>
+    </div>
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+  </div>
+
+  <div id="hint-box">
+    🐾 Keyo 提示：請使用 <span id="finger-text" class="highlight">左手小指</span> 按下字母！
+  </div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// --- 1. 遊戲資料設定 ---
+const letterPool = [
+  { char: 'A', finger: '左手小指' },
+  { char: 'S', finger: '左手無名指' },
+  { char: 'D', finger: '左手中指' },
+  { char: 'F', finger: '左手食指' },
+  { char: 'J', finger: '右手食指' },
+  { char: 'K', finger: '右手中指' },
+  { char: 'L', finger: '右手無名指' }
+];
+
+let score = 0;
+let combo = 0;
+let currentTarget = null;
+
+// 主角設定
+const player = {
+  x: 120,
+  y: 280,
+  width: 40,
+  height: 40,
+  vy: 0,
+  gravity: 0.8,
+  groundY: 280,
+  isJumping: false,
+  color: '#38bdf8'
+};
+
+// 伴侶靈獸 Keyo 設定
+const keyo = {
+  x: 60,
+  y: 250,
+  floatAngle: 0,
+  dialogue: "加油！對準字母按下！"
+};
+
+// 金幣/字母障礙物設定
+let coin = {
+  x: 500,
+  y: 200,
+  size: 30,
+  char: 'A'
+};
+
+// 地板滾動背景效果
+let groundOffset = 0;
+
+// --- 2. 核心邏輯函數 ---
+function spawnNewTarget() {
+  const randomIndex = Math.floor(Math.random() * letterPool.length);
+  currentTarget = letterPool[randomIndex];
+  coin.char = currentTarget.char;
+  coin.x = player.x + 350 + Math.random() * 100; // 產生在主角前方
+
+  // 更新 UI 提示
+  document.getElementById('target-text').innerText = currentTarget.char;
+  document.getElementById('finger-text').innerText = currentTarget.finger;
+}
+
+// 鍵盤輸入監聽
+window.addEventListener('keydown', (e) => {
+  const inputChar = e.key.toUpperCase();
+
+  if (currentTarget && inputChar === currentTarget.char) {
+    // 打對字：主角跳躍、得分、連擊
+    player.vy = -13; 
+    player.isJumping = true;
+    score += 10 + combo * 2;
+    combo++;
+    keyo.dialogue = "太棒了！精準命中！✨";
+    
+    // 更新 HUD
+    document.getElementById('score-text').innerText = score;
+    document.getElementById('combo-text').innerText = combo;
+
+    // 產生下一個目標
+    spawnNewTarget();
+  } else if (e.key.length === 1 && e.key.match(/[a-zA-Z]/)) {
+    // 打錯字：Combo 重置、靈獸提示
+    combo = 0;
+    document.getElementById('combo-text').innerText = combo;
+    keyo.dialogue = `哎呀！按錯了，注意是 ${currentTarget.finger} 喔！`;
+  }
+});
+
+// --- 3. 畫面繪製與更新迴圈 (Game Loop) ---
+function update() {
+  // 主角物理（重力與跳躍）
+  player.y += player.vy;
+  player.vy += player.gravity;
+
+  if (player.y >= player.groundY) {
+    player.y = player.groundY;
+    player.vy = 0;
+    player.isJumping = false;
+  }
+
+  // 金幣向左滾動移動
+  coin.x -= 3;
+  if (coin.x < -50) {
+    // 超出畫面自動重繪
+    spawnNewTarget();
+  }
+
+  // 地板滾動動畫
+  groundOffset = (groundOffset + 4) % 40;
+
+  // Keyo 懸浮波浪動畫
+  keyo.floatAngle += 0.05;
+  keyo.y = player.y - 30 + Math.sin(keyo.floatAngle) * 8;
+}
+
+function draw() {
+  // 清空畫布
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // 繪製背景星空
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // 繪製跑道地面
+  ctx.fillStyle = '#334155';
+  ctx.fillRect(0, 320, canvas.width, 80);
+  
+  // 地面網格滾動線條
+  ctx.strokeStyle = '#475569';
+  ctx.lineWidth = 2;
+  for (let x = -groundOffset; x < canvas.width; x += 40) {
+    ctx.beginPath();
+    ctx.moveTo(x, 320);
+    ctx.lineTo(x, 400);
+    ctx.stroke();
+  }
+
+  // 繪製金幣（字母）
+  ctx.fillStyle = '#f59e0b';
+  ctx.beginPath();
+  ctx.arc(coin.x, coin.y, coin.size, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#fef08a';
+  ctx.stroke();
+
+  // 金幣裡面的字母
+  ctx.fillStyle = '#1e293b';
+  ctx.font = 'bold 24px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(coin.char, coin.x, coin.y);
+
+  // 繪製主角（像素勇者代表）
+  ctx.fillStyle = player.color;
+  ctx.fillRect(player.x, player.y, player.width, player.height);
+  // 主角眼睛
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(player.x + 25, player.y + 8, 8, 8);
+
+  // 繪製伴侶靈獸 Keyo
+  ctx.fillStyle = '#ec4899';
+  ctx.beginPath();
+  ctx.arc(keyo.x, keyo.y, 18, 0, Math.PI * 2);
+  ctx.fill();
+  // Keyo 對話框
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  ctx.fillRect(keyo.x - 20, keyo.y - 45, 160, 25);
+  ctx.fillStyle = '#0f172a';
+  ctx.font = '12px sans-serif';
+  ctx.fillText(keyo.dialogue, keyo.x + 60, keyo.y - 32);
+
+  // 渲染迴圈
+  update();
+  requestAnimationFrame(draw);
+}
+
+// 初始化遊戲
+spawnNewTarget();
+draw();
+</script>
+
+</body>
+</html>
